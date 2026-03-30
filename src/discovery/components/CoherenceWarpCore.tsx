@@ -234,7 +234,7 @@ export function CoherenceWarpCore({
       sequenceProgress >= 0.74 && sequenceProgress < 0.9
         ? `rgba(255,255,255,${0.78 + clearScreenWhiteout * 0.22})`
         : "rgba(212,216,232,0.62)";
-    ctx.fillText("ARRIVAL / CLEAR SCREEN", focusX - 80, focusY + 48);
+    ctx.fillText("ARRIVED / CLEAR SCREEN", focusX - 80, focusY + 48);
     ctx.fillStyle = sequenceProgress >= 0.9 ? `rgba(255,255,255,${0.82 + coherentGlow * 0.18})` : "rgba(212,216,232,0.62)";
     ctx.fillText("COHERENT", focusX - 28, focusY + 68);
 
@@ -318,7 +318,7 @@ export function CoherenceWarpCore({
         <div
           style={{
             color:
-              sequenceLabel === "ARRIVAL / CLEAR SCREEN" || sequenceLabel === "COHERENT"
+              sequenceLabel === "ARRIVED / CLEAR SCREEN" || sequenceLabel === "COHERENT"
                 ? "#ffffff"
                 : state.phase === "LOCKED"
                   ? P.green
@@ -354,7 +354,7 @@ export function CoherenceWarpCore({
 
       <div style={{ marginTop: 12, color: P.dim, fontFamily: FONT, fontSize: 12, lineHeight: 1.7 }}>{state.guidance}</div>
       <div style={{ marginTop: 8, color: P.text, fontFamily: FONT, fontSize: 11, lineHeight: 1.6 }}>
-        Loop: Engage (Intention) - Warp - Arrival / Clear Screen - Coherent - Re-engage
+        Loop: Engage (Intention) - Warp - Arrived / Clear Screen - Coherent - Re-engage
       </div>
     </div>
   );

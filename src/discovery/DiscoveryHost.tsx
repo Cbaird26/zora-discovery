@@ -519,7 +519,7 @@ export default function DiscoveryHost({
         : engageState === "RUNNING"
           ? "Sequence in motion. Hold course until state is achieved."
           : engageState === "ACHIEVED"
-            ? "State achieved. Press Arrival to land."
+            ? "State achieved. Press Arrived to continue."
             : engageState === "LANDED"
               ? "White hold active. Touch screen or press Esc when ready."
               : "Arrived.";
@@ -1215,7 +1215,7 @@ export default function DiscoveryHost({
                       letterSpacing: "0.06em",
                     }}
                   >
-                    ESC / ARRIVAL
+                    ESC / ARRIVED
                   </button>
                 </div>
 
