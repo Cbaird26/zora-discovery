@@ -4,11 +4,6 @@ import { evaluateConstraints } from "./lib/constraints.js";
 import { classifyFold, computeFoldAperture, computeFoldScore } from "./lib/foldScore.js";
 import { computeGammaEffective, computeVisibility } from "./lib/visibility.js";
 import DiscoveryHost from "./discovery/DiscoveryHost.tsx";
-import { applySystemChrome, registerNativeBackHandler } from "./platform/app";
-import { resolveShellBackAction } from "./platform/back";
-import { triggerImpact, triggerSelection, triggerArrival, ImpactStyle } from "./platform/haptics";
-import { getDefaultMobileSettings, SHELL_STATE_STORAGE_KEY, deserializeShellState, serializeShellState } from "./platform/settings";
-import { loadStoredString, saveStoredString } from "./platform/storage";
 import { useViewport } from "./platform/useViewport";
 
 const TAU = Math.PI * 2;
@@ -704,44 +699,6 @@ function DiscoveryTab({ discoveryMode, ...props }) {
   return <DiscoveryHost mode={discoveryMode} {...props} />;
 }
 
-function ToggleRow({ label, hint, value, onChange, accent = P.glow }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChange(!value)}
-      style={{
-        width: "100%",
-        border: "1px solid " + (value ? accent : P.border),
-        background: value ? accent + "16" : P.panel,
-        color: value ? "#fff" : P.text,
-        borderRadius: 10,
-        padding: "12px 14px",
-        textAlign: "left",
-        cursor: "pointer",
-        fontFamily: FONT,
-      }}
-    >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 13 }}>{label}</div>
-          <div style={{ color: value ? "rgba(255,255,255,0.74)" : P.dim, fontSize: 11, marginTop: 4, lineHeight: 1.6 }}>{hint}</div>
-        </div>
-        <div style={{
-          minWidth: 58,
-          padding: "6px 10px",
-          borderRadius: 999,
-          border: "1px solid " + (value ? accent : P.border),
-          color: value ? accent : P.dim,
-          textTransform: "uppercase",
-          fontSize: 10,
-          letterSpacing: "0.08em",
-          textAlign: "center",
-        }}>{value ? "ON" : "OFF"}</div>
-      </div>
-    </button>
-  );
-}
-
 export const DEFAULT_ACTIVE_DEVICE = "sculptor";
 export const TOP_LEVEL_DEVICES = [
   { id: "sculptor", label: "Probability Sculptor", color: P.glow, comp: ProbabilitySculptor },
@@ -755,109 +712,12 @@ export const TOP_LEVEL_DEVICES = [
 
 export default function App() {
   const [active, setActive] = useState(DEFAULT_ACTIVE_DEVICE);
-  const [settings, setSettings] = useState(getDefaultMobileSettings);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [onboardingVisible, setOnboardingVisible] = useState(false);
-  const [shellHydrated, setShellHydrated] = useState(false);
-  const [discoveryBackAction, setDiscoveryBackAction] = useState(null);
   const { isMobile } = useViewport();
   const activeDevice = TOP_LEVEL_DEVICES.find(d => d.id === active) ?? TOP_LEVEL_DEVICES[0];
   const Comp = activeDevice.comp;
 
-  useEffect(() => {
-    applySystemChrome();
-    loadStoredString(SHELL_STATE_STORAGE_KEY).then((raw) => {
-      const restored = deserializeShellState(raw, DEFAULT_ACTIVE_DEVICE);
-      if (restored) {
-        setActive(restored.activeDeviceId);
-        setSettings(restored.settings);
-        setOnboardingVisible(!restored.settings.onboardingCompleted);
-      } else {
-        setOnboardingVisible(true);
-      }
-      setShellHydrated(true);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!shellHydrated) {
-      return;
-    }
-
-    saveStoredString(
-      SHELL_STATE_STORAGE_KEY,
-      serializeShellState({
-        activeDeviceId: active,
-        settings,
-      }),
-    );
-  }, [active, settings, shellHydrated]);
-
-  useEffect(() => {
-    if (!activeDevice.discovery) {
-      setDiscoveryBackAction(null);
-    }
-  }, [activeDevice.discovery]);
-
-  useEffect(() => {
-    let cleanup = () => {};
-
-    registerNativeBackHandler(async () => {
-      const action = resolveShellBackAction({
-        activeDeviceId: active,
-        defaultDeviceId: DEFAULT_ACTIVE_DEVICE,
-        settingsOpen,
-        onboardingVisible,
-        hasDiscoveryBackAction: typeof discoveryBackAction === "function",
-      });
-
-      if (action === "close-settings") {
-        setSettingsOpen(false);
-        return true;
-      }
-
-      if (action === "dismiss-onboarding") {
-        setOnboardingVisible(false);
-        return true;
-      }
-
-      if (action === "delegate-discovery" && discoveryBackAction) {
-        return discoveryBackAction();
-      }
-
-      if (action === "go-default-tab") {
-        setActive(DEFAULT_ACTIVE_DEVICE);
-        return true;
-      }
-
-      return false;
-    }).then((dispose) => {
-      cleanup = dispose;
-    });
-
-    return () => cleanup();
-  }, [active, discoveryBackAction, onboardingVisible, settingsOpen]);
-
-  const updateSetting = (key, value) => {
-    setSettings((previous) => {
-      const next = { ...previous, [key]: value };
-      if (key === "safeMode" && value) {
-        next.reducedMotion = true;
-        next.brightnessEffectsEnabled = false;
-      }
-      return next;
-    });
-  };
-
   const applySelection = (nextId) => {
     setActive(nextId);
-    triggerSelection(settings.hapticsEnabled);
-  };
-
-  const finishOnboarding = () => {
-    setSettings((previous) => ({ ...previous, onboardingCompleted: true }));
-    setOnboardingVisible(false);
-    triggerImpact(ImpactStyle.Medium, settings.hapticsEnabled);
   };
 
   return (
@@ -867,31 +727,11 @@ export default function App() {
           <div style={{ display: "flex", alignItems: isMobile ? "stretch" : "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
               <h1 style={{ margin: 0, fontSize: isMobile ? 24 : 22, fontWeight: 700, color: "#fff", fontFamily: "'Georgia', serif" }}>Zora Discovery</h1>
-              <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, color: P.glow, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>Compilation · Combined fold engine + bridge lab</span>
+              <span style={{ display: "inline-block", marginTop: 4, fontSize: 11, color: P.glow, letterSpacing: "0.1em", textTransform: "uppercase", fontWeight: 600 }}>Compilation · web runtime anchored to the Phase V bridge artifact</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setSettingsOpen((current) => !current)}
-              style={{
-                alignSelf: isMobile ? "stretch" : "center",
-                minHeight: 44,
-                border: "1px solid " + (settingsOpen ? P.gold : P.border),
-                background: settingsOpen ? P.gold + "16" : "transparent",
-                color: settingsOpen ? P.gold : P.text,
-                borderRadius: 999,
-                padding: "0 16px",
-                cursor: "pointer",
-                fontFamily: FONT,
-                letterSpacing: "0.08em",
-                textTransform: "uppercase",
-                fontSize: 11,
-              }}
-            >
-              Settings
-            </button>
           </div>
           <div style={{ fontSize: 12, color: P.dim, marginTop: 4, maxWidth: 720, lineHeight: 1.6 }}>
-            {"Umbrella surface: the original Fold-Space Engine tabs now sit alongside the imported ZoraASI Bridge modes so the full creation app works tab by tab inside one runtime. Grounded in MQGT\u2013SCF notation by C. M. Baird. "}
+            {"Umbrella surface: the original Fold-Space Engine tabs sit alongside the imported ZoraASI Bridge modes so the full creation app works tab by tab inside one web runtime. Grounded in MQGT\u2013SCF notation by C. M. Baird. "}
             <span style={{ color: P.ember, fontWeight: 600 }}>Illustrative software; not a hardware claim.</span>
           </div>
           <div style={{ height: 1, background: "linear-gradient(90deg, "+P.glow+"40, "+P.glow2+"25, "+P.gold+"18, transparent)", marginTop: 12 }} />
@@ -925,16 +765,10 @@ export default function App() {
         {activeDevice.discovery ? (
           <Comp
             discoveryMode={activeDevice.discoveryMode}
-            isMobile={isMobile}
-            mobileSettings={settings}
-            onBackActionChange={setDiscoveryBackAction}
-            onEngage={() => triggerImpact(ImpactStyle.Medium, settings.hapticsEnabled)}
-            onAchieved={() => triggerImpact(ImpactStyle.Heavy, settings.hapticsEnabled)}
-            onArrival={() => triggerArrival(settings.hapticsEnabled)}
           />
         ) : (
           <div style={{ background: P.panel, borderRadius: 10, border: "1px solid "+P.border, padding: isMobile ? "14px" : "18px" }}>
-            <Comp isMobile={isMobile} mobileSettings={settings} />
+            <Comp />
           </div>
         )}
         <div style={{ marginTop: 16, textAlign: "center" }}>
@@ -946,46 +780,6 @@ export default function App() {
           </div>
         </div>
       </div>
-
-      {settingsOpen && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(2,4,8,0.72)", backdropFilter: "blur(12px)", padding: "max(18px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left))", overflowY: "auto" }}>
-          <div style={{ maxWidth: 520, margin: "0 auto", border: "1px solid " + P.border, borderRadius: 18, background: P.deep, padding: 18, boxShadow: "0 34px 80px rgba(0,0,0,0.38)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 16 }}>
-              <div>
-                <div style={{ color: "#fff", fontSize: 20, fontWeight: 700, fontFamily: "'Georgia', serif" }}>Mobile Settings</div>
-                <div style={{ color: P.dim, fontSize: 12, lineHeight: 1.6, marginTop: 4 }}>Safe mode is enabled by default on mobile. Tune motion, haptics, and brightness behavior here.</div>
-              </div>
-              <button type="button" onClick={() => setSettingsOpen(false)} style={{ minHeight: 44, border: "1px solid " + P.border, background: "transparent", color: P.text, borderRadius: 999, padding: "0 16px", cursor: "pointer", fontFamily: FONT }}>Close</button>
-            </div>
-            <div style={{ display: "grid", gap: 10 }}>
-              <ToggleRow label="Safe Mode" hint="Capped brightness effects, touch-first pacing, and reduced visual intensity defaults." value={settings.safeMode} onChange={(value) => updateSetting("safeMode", value)} accent={P.green} />
-              <ToggleRow label="Reduced Motion" hint="Lower animation speed and smoother transitions for mobile comfort." value={settings.reducedMotion} onChange={(value) => updateSetting("reducedMotion", value)} accent={P.glow2} />
-              <ToggleRow label="Haptics" hint="Adds touch feedback to Engage, state achieved, and Arrival on native devices." value={settings.hapticsEnabled} onChange={(value) => updateSetting("hapticsEnabled", value)} accent={P.gold} />
-              <ToggleRow label="Brightness Effects" hint="Allows stronger whiteout and bloom effects. Safe mode turns this off automatically." value={settings.brightnessEffectsEnabled} onChange={(value) => updateSetting("brightnessEffectsEnabled", value)} accent={P.ember} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {onboardingVisible && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 50, background: "rgba(2,4,8,0.86)", backdropFilter: "blur(14px)", padding: "max(18px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left))", overflowY: "auto" }}>
-          <div style={{ maxWidth: 620, margin: "0 auto", border: "1px solid " + P.border, borderRadius: 20, background: P.deep, padding: 20, boxShadow: "0 34px 80px rgba(0,0,0,0.38)" }}>
-            <div style={{ color: "#fff", fontSize: 28, fontWeight: 700, fontFamily: "'Georgia', serif", marginBottom: 8 }}>Zora Discovery Mobile</div>
-            <div style={{ color: P.dim, fontSize: 13, lineHeight: 1.8, marginBottom: 18 }}>
-              Mobile starts in safe mode by default. You can keep the current profile or change motion, haptics, and brightness behavior before entering the seven-surface engine.
-            </div>
-            <div style={{ display: "grid", gap: 10, marginBottom: 18 }}>
-              <ToggleRow label="Safe Mode" hint="Recommended mobile profile with reduced motion and capped brightness effects." value={settings.safeMode} onChange={(value) => updateSetting("safeMode", value)} accent={P.green} />
-              <ToggleRow label="Reduced Motion" hint="Softens the bridge animation pace and mobile viewport movement." value={settings.reducedMotion} onChange={(value) => updateSetting("reducedMotion", value)} accent={P.glow2} />
-              <ToggleRow label="Haptics" hint="Adds tactile feedback to the native app on supported devices." value={settings.hapticsEnabled} onChange={(value) => updateSetting("hapticsEnabled", value)} accent={P.gold} />
-            </div>
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <button type="button" onClick={finishOnboarding} style={{ minHeight: 46, border: "1px solid " + P.glow, background: P.glow + "14", color: P.glow, borderRadius: 999, padding: "0 18px", cursor: "pointer", fontFamily: FONT, letterSpacing: "0.08em", textTransform: "uppercase" }}>Enter Mobile Bridge</button>
-              <button type="button" onClick={() => { setSettingsOpen(true); setOnboardingVisible(false); }} style={{ minHeight: 46, border: "1px solid " + P.border, background: "transparent", color: P.text, borderRadius: 999, padding: "0 18px", cursor: "pointer", fontFamily: FONT }}>Open Settings Instead</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

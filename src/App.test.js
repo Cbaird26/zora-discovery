@@ -20,7 +20,7 @@ describe("Zora Discovery shell", () => {
   it("renders the umbrella brand and default Probability Sculptor surface", () => {
     const html = renderToStaticMarkup(createElement(App));
     expect(html).toContain("Zora Discovery");
-    expect(html).toContain("Compilation · Combined fold engine + bridge lab");
+    expect(html).toContain("Compilation · web runtime anchored to the Phase V bridge artifact");
     expect(html).toContain("Probability Sculptor");
     expect(html).toContain("Fold-Space Engine");
     expect(html).toContain("Timeline Selector");
