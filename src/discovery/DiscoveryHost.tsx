@@ -57,6 +57,7 @@ const SEQUENCE_READY_PROGRESS = 0.04;
 const SEQUENCE_ACHIEVED_PROGRESS = 0.95;
 const SEQUENCE_DURATION_SECONDS = 5.6;
 const ARRIVAL_MESSAGE_DURATION_MS = 1100;
+const ARRIVAL_TOUCH_GUARD_MS = 240;
 const MODE_LABELS: Record<EngineMode, string> = {
   DECISION: "Decision",
   INTENT: "Intent",
@@ -174,14 +175,26 @@ export default function DiscoveryHost({
   const [enginePaused, setEnginePaused] = useState(false);
   const [engageState, setEngageState] = useState<"READY" | "RUNNING" | "ACHIEVED" | "LANDED" | "ARRIVED">("READY");
   const [engageStartT, setEngageStartT] = useState<number | null>(null);
+  const [landedAtMs, setLandedAtMs] = useState<number | null>(null);
+  const enterLandedState = useCallback(() => {
+    setEngageState("LANDED");
+    setEngageStartT(null);
+    setLandedAtMs(Date.now());
+  }, []);
+
   const dismissArrivalHold = useCallback(() => {
     if (engageState !== "LANDED") {
       return;
     }
 
+    if (landedAtMs !== null && Date.now() - landedAtMs < ARRIVAL_TOUCH_GUARD_MS) {
+      return;
+    }
+
     setEngageState("ARRIVED");
     setEngageStartT(null);
-  }, [engageState]);
+    setLandedAtMs(null);
+  }, [engageState, landedAtMs]);
 
   const dismissArrivalMessage = useCallback(() => {
     if (engageState !== "ARRIVED") {
@@ -190,6 +203,7 @@ export default function DiscoveryHost({
 
     setEngageState("READY");
     setEngageStartT(null);
+    setLandedAtMs(null);
   }, [engageState]);
 
   useEffect(() => {
@@ -244,13 +258,13 @@ export default function DiscoveryHost({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setEngageState("LANDED");
+        enterLandedState();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [engageState]);
+  }, [engageState, enterLandedState]);
 
   useEffect(() => {
     if (engageState !== "LANDED") {
@@ -298,7 +312,7 @@ export default function DiscoveryHost({
 
     if (engageState === "ACHIEVED") {
       onBackActionChange(() => {
-        setEngageState("LANDED");
+        enterLandedState();
         return true;
       });
       return () => onBackActionChange(null);
@@ -322,7 +336,7 @@ export default function DiscoveryHost({
 
     onBackActionChange(null);
     return () => onBackActionChange(null);
-  }, [dismissArrivalHold, dismissArrivalMessage, engageState, onBackActionChange]);
+  }, [dismissArrivalHold, dismissArrivalMessage, engageState, enterLandedState, onBackActionChange]);
 
   const selectedDecisionOption = useMemo(
     () => decisionOptions.find((option) => option.id === selectedDecisionId) ?? decisionOptions[0],
@@ -482,7 +496,9 @@ export default function DiscoveryHost({
       ? 1
       : 0.88;
   const clearScreenOverlayOpacity =
-    engageState === "ARRIVED"
+    engageState === "LANDED"
+      ? 1
+      : engageState === "ARRIVED"
       ? 0
       : whiteoutActive
         ? overlayMaxOpacity
@@ -506,7 +522,7 @@ export default function DiscoveryHost({
           : engageState === "ACHIEVED"
             ? "State achieved. Press Arrival to land."
             : engageState === "LANDED"
-              ? "Arrival."
+              ? "White hold active. Touch screen or press Esc when ready."
               : "Arrival.";
 
   const updateManualControl = <K extends keyof EngineControls>(key: K, value: EngineControls[K]) => {
@@ -962,28 +978,6 @@ export default function DiscoveryHost({
           touchAction: engageState === "LANDED" ? "manipulation" : "auto",
         }}
       />
-      {engageState === "LANDED" && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            pointerEvents: "none",
-            zIndex: 1000,
-          color: "#08111a",
-          fontFamily: FONT,
-          fontSize: isMobile ? 22 : 28,
-          fontWeight: 700,
-            letterSpacing: "0.16em",
-            textTransform: "uppercase",
-            textAlign: "center",
-          }}
-        >
-          Arrival
-        </div>
-      )}
       {engageState === "ARRIVED" && (
         <div
           style={{
@@ -1192,7 +1186,7 @@ export default function DiscoveryHost({
                   <button
                     onClick={() => {
                       if (engageState === "ACHIEVED") {
-                        setEngageState("LANDED");
+                        enterLandedState();
                         onArrival?.();
                       }
                     }}
