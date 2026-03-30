@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import presets from "@/data/presets.json";
 import { DeviceHeader } from "@/components/DeviceHeader";
 import { EqBlock } from "@/components/EqBlock";
@@ -56,6 +56,7 @@ const FONT = "'Courier New', 'Lucida Console', monospace";
 const SEQUENCE_READY_PROGRESS = 0.04;
 const SEQUENCE_ACHIEVED_PROGRESS = 0.95;
 const SEQUENCE_DURATION_SECONDS = 5.6;
+const ARRIVAL_HOLD_DURATION_MS = 1600;
 const MODE_LABELS: Record<EngineMode, string> = {
   DECISION: "Decision",
   INTENT: "Intent",
@@ -173,6 +174,14 @@ export default function DiscoveryHost({
   const [enginePaused, setEnginePaused] = useState(false);
   const [engageState, setEngageState] = useState<"READY" | "RUNNING" | "ACHIEVED" | "LANDED">("READY");
   const [engageStartT, setEngageStartT] = useState<number | null>(null);
+  const dismissArrivalHold = useCallback(() => {
+    if (engageState !== "LANDED") {
+      return;
+    }
+
+    setEngageState("READY");
+    setEngageStartT(null);
+  }, [engageState]);
 
   useEffect(() => {
     if (enginePaused) {
@@ -239,13 +248,22 @@ export default function DiscoveryHost({
       return;
     }
 
-    const id = window.setTimeout(() => {
-      setEngageState("READY");
-      setEngageStartT(null);
-    }, 1800);
+    const timeoutId = window.setTimeout(() => {
+      dismissArrivalHold();
+    }, ARRIVAL_HOLD_DURATION_MS);
 
-    return () => window.clearTimeout(id);
-  }, [engageState]);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        dismissArrivalHold();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [dismissArrivalHold, engageState]);
 
   useEffect(() => {
     if (!onBackActionChange) {
@@ -446,12 +464,12 @@ export default function DiscoveryHost({
       : enginePaused
         ? "Engine paused. Press Engage to start the sequence."
         : engageState === "READY"
-      ? "Console ready. Press Engage to start the sequence."
-      : engageState === "RUNNING"
-        ? "Sequence in motion. Hold course until state is achieved."
-        : engageState === "ACHIEVED"
-          ? "State achieved. Press Arrival to land."
-          : "Landing arrival.";
+        ? "Console ready. Press Engage to start the sequence."
+        : engageState === "RUNNING"
+          ? "Sequence in motion. Hold course until state is achieved."
+          : engageState === "ACHIEVED"
+            ? "State achieved. Press Arrival to land."
+            : "Arrival.";
 
   const updateManualControl = <K extends keyof EngineControls>(key: K, value: EngineControls[K]) => {
     setSelectedPresetIndex(null);
@@ -894,14 +912,16 @@ export default function DiscoveryHost({
       }}
     >
       <div
+        onPointerDown={engageState === "LANDED" ? dismissArrivalHold : undefined}
         style={{
           position: "fixed",
           inset: 0,
           background: "#ffffff",
-          pointerEvents: "none",
+          pointerEvents: engageState === "LANDED" ? "auto" : "none",
           zIndex: 999,
           opacity: clearScreenOverlayOpacity,
           boxShadow: `0 0 ${isMobile ? 180 : 320}px rgba(255,255,255,0.98), inset 0 0 ${isMobile ? 120 : 240}px rgba(255,255,255,0.98)`,
+          touchAction: engageState === "LANDED" ? "manipulation" : "auto",
         }}
       />
       {engageState === "LANDED" && (
