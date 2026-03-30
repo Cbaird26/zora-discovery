@@ -23,6 +23,8 @@ import {
 } from "@/lib/productModel";
 import { savePersistedProductState, loadPersistedProductState } from "@/lib/persistence";
 import { computeFoldScoreExtended } from "@/lib/engineCore";
+import { buildJsonExportArtifact, exportJsonArtifact } from "../platform/export";
+import type { MobileSettings } from "../platform/types";
 import type {
   DecisionOption,
   CoherenceHoldMode,
@@ -132,7 +134,31 @@ function formatVector(vector: Vector3) {
   return vector.map((value) => value.toFixed(1)).join(", ");
 }
 
-export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
+const DEFAULT_MOBILE_SETTINGS: MobileSettings = {
+  safeMode: true,
+  reducedMotion: true,
+  hapticsEnabled: true,
+  brightnessEffectsEnabled: false,
+  onboardingCompleted: false,
+};
+
+export default function DiscoveryHost({
+  mode,
+  isMobile = false,
+  mobileSettings = DEFAULT_MOBILE_SETTINGS,
+  onBackActionChange,
+  onEngage,
+  onAchieved,
+  onArrival,
+}: {
+  mode: EngineMode;
+  isMobile?: boolean;
+  mobileSettings?: MobileSettings;
+  onBackActionChange?: ((handler: null | (() => boolean)) => void) | null;
+  onEngage?: (() => void) | null;
+  onAchieved?: (() => void) | null;
+  onArrival?: (() => void) | null;
+}) {
   const presetList = presets as Preset[];
   const [manualControls, setManualControls] = useState<EngineControls>(DEFAULT_MANUAL_CONTROLS);
   const [selectedPresetIndex, setSelectedPresetIndex] = useState<number | null>(null);
@@ -158,15 +184,16 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
   }, [enginePaused]);
 
   useEffect(() => {
-    const persisted = loadPersistedProductState();
-    if (persisted) {
-      setDecisionOptions(persisted.decisionOptions);
-      setSelectedDecisionId(persisted.selectedDecisionId);
-      setIntentScenario(persisted.intentScenario);
-      setCoherenceHoldMode(persisted.coherenceHoldMode);
-      setAdvancedOpen(persisted.advancedOpen);
-    }
-    setHydrated(true);
+    loadPersistedProductState().then((persisted) => {
+      if (persisted) {
+        setDecisionOptions(persisted.decisionOptions);
+        setSelectedDecisionId(persisted.selectedDecisionId);
+        setIntentScenario(persisted.intentScenario);
+        setCoherenceHoldMode(persisted.coherenceHoldMode);
+        setAdvancedOpen(persisted.advancedOpen);
+      }
+      setHydrated(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -189,7 +216,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
       advancedOpen,
     };
 
-    savePersistedProductState(state);
+    void savePersistedProductState(state);
   }, [advancedOpen, coherenceHoldMode, decisionOptions, hydrated, intentScenario, mode, selectedDecisionId]);
 
   useEffect(() => {
@@ -219,6 +246,32 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
 
     return () => window.clearTimeout(id);
   }, [engageState]);
+
+  useEffect(() => {
+    if (!onBackActionChange) {
+      return;
+    }
+
+    if (engageState === "ACHIEVED") {
+      onBackActionChange(() => {
+        setEngageState("LANDED");
+        return true;
+      });
+      return () => onBackActionChange(null);
+    }
+
+    if (engageState === "LANDED") {
+      onBackActionChange(() => {
+        setEngageState("READY");
+        setEngageStartT(null);
+        return true;
+      });
+      return () => onBackActionChange(null);
+    }
+
+    onBackActionChange(null);
+    return () => onBackActionChange(null);
+  }, [engageState, onBackActionChange]);
 
   const selectedDecisionOption = useMemo(
     () => decisionOptions.find((option) => option.id === selectedDecisionId) ?? decisionOptions[0],
@@ -343,8 +396,9 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
     if (engageState === "RUNNING" && sequenceProgress >= SEQUENCE_ACHIEVED_PROGRESS) {
       setEngageState("ACHIEVED");
       setEngageStartT(null);
+      onAchieved?.();
     }
-  }, [engageState, sequenceProgress]);
+  }, [engageState, onAchieved, sequenceProgress]);
 
   const sequenceT = useMemo(
     () => (sequenceProgress - coherenceCoreState.lockStrength * 0.08) / 0.2,
@@ -364,13 +418,25 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
     engageState === "LANDED" ||
     (engageState !== "READY" &&
       (coherenceSequence.stage === "CLEAR" || coherenceSequence.stage === "COHERENT"));
+  const effectScale = mobileSettings.safeMode
+    ? mobileSettings.brightnessEffectsEnabled
+      ? 0.42
+      : 0.26
+    : mobileSettings.brightnessEffectsEnabled
+      ? 1
+      : 0.72;
+  const overlayMaxOpacity = mobileSettings.safeMode
+    ? 0.74
+    : mobileSettings.brightnessEffectsEnabled
+      ? 1
+      : 0.88;
   const clearScreenOverlayOpacity = whiteoutActive
-    ? 1
+    ? overlayMaxOpacity
     : Math.min(
-        1,
+        overlayMaxOpacity,
         Math.max(
-          coherenceSequence.clearScreenWhiteout * 2.8,
-          coherenceSequence.coherentGlow * 4.2,
+          coherenceSequence.clearScreenWhiteout * 2.8 * effectScale,
+          coherenceSequence.coherentGlow * 4.2 * effectScale,
         ),
       );
 
@@ -384,8 +450,8 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
       : engageState === "RUNNING"
         ? "Sequence in motion. Hold course until state is achieved."
         : engageState === "ACHIEVED"
-          ? "State achieved. Press Esc to land new reality."
-          : "Landing new reality.";
+          ? "State achieved. Press Arrival to land."
+          : "Landing arrival.";
 
   const updateManualControl = <K extends keyof EngineControls>(key: K, value: EngineControls[K]) => {
     setSelectedPresetIndex(null);
@@ -525,19 +591,13 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
     setLogs((previous) => [...previous, run]);
   };
 
-  const exportRuns = () => {
+  const exportRuns = async () => {
     if (logs.length === 0) {
       return;
     }
 
     const payload = serializeRunArchive(logs);
-    const blob = new Blob([payload], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "fold-space-engine-runs.json";
-    link.click();
-    URL.revokeObjectURL(url);
+    await exportJsonArtifact(buildJsonExportArtifact("zora-discovery-runs.json", payload));
   };
 
   const renderAdvancedControls = (
@@ -699,7 +759,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
       <div style={{ color: P.dim, textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 12, marginBottom: 10 }}>
         {showResearchNote ? "Research Controls" : "Navigation Controls"}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
         <div>
           <Knob label="Energy Density" value={manualControls.energy} onChange={(value) => updateManualControl("energy", value)} min={0} max={1} color={P.glow} />
           <Knob label="Curvature" value={manualControls.curvature} onChange={(value) => updateManualControl("curvature", value)} min={0} max={1} color={P.glow2} />
@@ -743,7 +803,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
   const renderModeSpecificBottom = () => {
     if (mode === "DECISION") {
       return (
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)", gap: 20, marginTop: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 2fr) minmax(280px, 1fr)", gap: 20, marginTop: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
             {decisionRankings.map((entry) => {
               const winner = winningDecision?.id === entry.id;
@@ -782,7 +842,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
 
     if (mode === "INTENT") {
       return (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginTop: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginTop: 20 }}>
           <GlowBox color={P.glow2}>
             <div><strong>Derived Energy:</strong> {intentEvaluation.params.energy.toFixed(3)}</div>
             <div><strong>Derived Curvature:</strong> {intentEvaluation.params.curvature.toFixed(3)}</div>
@@ -796,7 +856,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
 
     if (mode === "NAVIGATION") {
       return (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginTop: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginTop: 20 }}>
           <GlowBox color={P.glow2}>
             <div><strong>Target Distance:</strong> {displayEvaluation.targetDistance.toFixed(2)}</div>
             <div><strong>Optimal Path Cost:</strong> {displayEvaluation.chosenCost.toFixed(3)}</div>
@@ -809,7 +869,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
     }
 
     return (
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginTop: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginTop: 20 }}>
         <ParameterSweepPanel rows={sweepRows} />
         <GlowBox color={P.glow2}>
           <div><strong>Φc:</strong> {displayEvaluation.fields.Phi_c.toFixed(3)}</div>
@@ -829,7 +889,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
           "radial-gradient(circle at top, rgba(27,42,70,0.95) 0%, rgba(9,12,20,0.98) 42%, #04050a 100%)",
         color: P.text,
         fontFamily: FONT,
-        padding: 24,
+        padding: isMobile ? 14 : 24,
         borderRadius: 18,
       }}
     >
@@ -841,7 +901,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
           pointerEvents: "none",
           zIndex: 999,
           opacity: clearScreenOverlayOpacity,
-          boxShadow: "0 0 320px rgba(255,255,255,0.98), inset 0 0 240px rgba(255,255,255,0.98)",
+          boxShadow: `0 0 ${isMobile ? 180 : 320}px rgba(255,255,255,0.98), inset 0 0 ${isMobile ? 120 : 240}px rgba(255,255,255,0.98)`,
         }}
       />
       {engageState === "LANDED" && (
@@ -854,10 +914,10 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
             justifyContent: "center",
             pointerEvents: "none",
             zIndex: 1000,
-            color: "#08111a",
-            fontFamily: FONT,
-            fontSize: 28,
-            fontWeight: 700,
+          color: "#08111a",
+          fontFamily: FONT,
+          fontSize: isMobile ? 22 : 28,
+          fontWeight: 700,
             letterSpacing: "0.16em",
             textTransform: "uppercase",
             textAlign: "center",
@@ -872,7 +932,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
           margin: "0 auto",
           border: "1px solid rgba(105,124,182,0.22)",
           borderRadius: 28,
-          padding: 20,
+          padding: isMobile ? 14 : 20,
           background:
             "linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)), radial-gradient(circle at top right, rgba(0,240,255,0.05), rgba(0,0,0,0) 30%)",
           boxShadow: "0 34px 80px rgba(0,0,0,0.34)",
@@ -933,7 +993,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
           </GlowBox>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, margin: "18px 0 20px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, margin: "18px 0 20px" }}>
           {summaryCards.map((item) => (
             <div
               key={item.label}
@@ -961,6 +1021,9 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
             borderRadius: 16,
             border: `1px solid ${P.border}`,
             background: "rgba(7,9,15,0.72)",
+            position: isMobile ? "sticky" : "static",
+            bottom: isMobile ? "max(8px, env(safe-area-inset-bottom))" : "auto",
+            zIndex: isMobile ? 6 : 1,
           }}
         >
           <button
@@ -997,12 +1060,12 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 360px", gap: 20, alignItems: "start", position: "relative", zIndex: 1 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) 360px", gap: 20, alignItems: "start", position: "relative", zIndex: 1 }}>
           <div>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+                gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(300px, 1fr))",
                 gap: 20,
                 alignItems: "start",
                 padding: 14,
@@ -1012,7 +1075,13 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
               }}
             >
               <div>
-                <FoldField aperture={displayEvaluation.aperture} stability={displayEvaluation.stability} t={t} chosenTarget={displayEvaluation.chosenTarget} />
+                <FoldField
+                  aperture={displayEvaluation.aperture}
+                  stability={displayEvaluation.stability}
+                  t={t}
+                  chosenTarget={displayEvaluation.chosenTarget}
+                  reducedMotion={mobileSettings.reducedMotion}
+                />
               </div>
               <div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -1022,6 +1091,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
                       if (engageState === "READY") {
                         setEngageState("RUNNING");
                         setEngageStartT(t);
+                        onEngage?.();
                       }
                     }}
                     style={{
@@ -1042,6 +1112,7 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
                     onClick={() => {
                       if (engageState === "ACHIEVED") {
                         setEngageState("LANDED");
+                        onArrival?.();
                       }
                     }}
                     disabled={engageState !== "ACHIEVED"}
@@ -1101,6 +1172,8 @@ export default function DiscoveryHost({ mode }: { mode: EngineMode }) {
                   riskScore={displayEvaluation.constraints.riskScore}
                   holdMode={coherenceHoldMode}
                   t={sequenceT}
+                  effectScale={effectScale}
+                  reducedMotion={mobileSettings.reducedMotion}
                 />
               </div>
             </div>

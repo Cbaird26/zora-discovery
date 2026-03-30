@@ -1,19 +1,23 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useResponsiveCanvas } from "../../platform/useResponsiveCanvas";
 
 export function FoldField({
   aperture,
   stability,
   t,
   chosenTarget,
+  reducedMotion = false,
 }: {
   aperture: number;
   stability: number;
   t: number;
   chosenTarget: [number, number, number];
+  reducedMotion?: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  const { containerRef, canvasWidth, canvasHeight } = useResponsiveCanvas(440, 380, 440);
 
   useEffect(() => {
     let frame = 0;
@@ -24,20 +28,23 @@ export function FoldField({
       if (!ctx) return;
       const W = cv.width;
       const H = cv.height;
+      const motionT = reducedMotion ? t * 0.4 : t;
+
       const backdrop = ctx.createLinearGradient(0, 0, W, H);
       backdrop.addColorStop(0, "#04060d");
       backdrop.addColorStop(0.5, "#08111a");
       backdrop.addColorStop(1, "#04050a");
       ctx.fillStyle = backdrop;
       ctx.fillRect(0, 0, W, H);
+
       const spacing = 20;
       const strength = aperture * 50;
-      const oscillation = Math.sin(t * 2) * (1 - stability);
+      const oscillation = Math.sin(motionT * 2) * (1 - stability);
       const cx = W / 2;
       const cy = H / 2;
       const tx = cx + chosenTarget[0] * 8;
       const ty = cy + chosenTarget[1] * 12;
-      const sweepX = ((t * 90) % (W + 120)) - 60;
+      const sweepX = ((motionT * 90) % (W + 120)) - 60;
 
       const glow = ctx.createRadialGradient(cx, cy, 10, cx, cy, 180);
       glow.addColorStop(0, "rgba(0,240,255,0.14)");
@@ -49,7 +56,7 @@ export function FoldField({
       for (let star = 0; star < 32; star += 1) {
         const seed = star * 19.19;
         const x = (Math.sin(seed) * 0.5 + 0.5) * W;
-        const y = ((Math.cos(seed * 1.7 + t * 0.2) * 0.5 + 0.5) * H * 0.85) + 10;
+        const y = ((Math.cos(seed * 1.7 + motionT * 0.2) * 0.5 + 0.5) * H * 0.85) + 10;
         const length = 4 + aperture * 12 + ((star % 4) * 3);
         ctx.beginPath();
         ctx.moveTo(x, y);
@@ -65,7 +72,7 @@ export function FoldField({
       for (let x = 0; x < W; x += spacing) {
         ctx.beginPath();
         for (let y = 0; y < H; y += 5) {
-          const dx = Math.sin(y * 0.02 + t) * strength + oscillation * 20;
+          const dx = Math.sin(y * 0.02 + motionT) * strength + oscillation * 20;
           ctx.lineTo(x + dx, y);
         }
         ctx.stroke();
@@ -74,7 +81,7 @@ export function FoldField({
       for (let y = 0; y < H; y += spacing) {
         ctx.beginPath();
         for (let x = 0; x < W; x += 5) {
-          const dy = Math.cos(x * 0.02 + t) * strength + oscillation * 20;
+          const dy = Math.cos(x * 0.02 + motionT) * strength + oscillation * 20;
           ctx.lineTo(x, y + dy);
         }
         ctx.stroke();
@@ -99,7 +106,7 @@ export function FoldField({
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(tx, ty, 18 + Math.sin(t * 3) * 4, 0, Math.PI * 2);
+      ctx.arc(tx, ty, 18 + Math.sin(motionT * 3) * 4, 0, Math.PI * 2);
       ctx.strokeStyle = "rgba(255,255,255,0.4)";
       ctx.lineWidth = 1.5;
       ctx.stroke();
@@ -148,7 +155,23 @@ export function FoldField({
 
     frame = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(frame);
-  }, [aperture, stability, t, chosenTarget]);
+  }, [aperture, stability, t, chosenTarget, reducedMotion]);
 
-  return <canvas ref={ref} width={440} height={380} style={{ width: "100%", maxWidth: 440, borderRadius: 16, border: "1px solid rgba(105,124,182,0.28)", background: "#05060a", boxShadow: "0 26px 60px rgba(0,0,0,0.28)" }} />;
+  return (
+    <div ref={containerRef} style={{ width: "100%", maxWidth: 440 }}>
+      <canvas
+        ref={ref}
+        width={canvasWidth}
+        height={canvasHeight}
+        style={{
+          width: "100%",
+          display: "block",
+          borderRadius: 16,
+          border: "1px solid rgba(105,124,182,0.28)",
+          background: "#05060a",
+          boxShadow: "0 26px 60px rgba(0,0,0,0.28)",
+        }}
+      />
+    </div>
+  );
 }

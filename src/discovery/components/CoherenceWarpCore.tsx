@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { computeCoherenceSequence, computeCoherenceWarpCore } from "@/lib/coherenceEngine";
 import type { CoherenceHoldMode } from "@/lib/types";
+import { useResponsiveCanvas } from "../../platform/useResponsiveCanvas";
 
 const P = {
   border: "#222640",
@@ -23,6 +24,8 @@ export function CoherenceWarpCore({
   riskScore,
   holdMode,
   t,
+  effectScale = 1,
+  reducedMotion = false,
 }: {
   coherence: number;
   stability: number;
@@ -30,8 +33,11 @@ export function CoherenceWarpCore({
   riskScore: number;
   holdMode: CoherenceHoldMode;
   t: number;
+  effectScale?: number;
+  reducedMotion?: boolean;
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  const { containerRef, canvasWidth, canvasHeight } = useResponsiveCanvas(440, 320, 440);
   const state = computeCoherenceWarpCore({
     coherence,
     stability,
@@ -56,6 +62,7 @@ export function CoherenceWarpCore({
       return;
     }
 
+    const motionT = reducedMotion ? t * 0.45 : t;
     const width = canvas.width;
     const height = canvas.height;
     const focusX = width * 0.72;
@@ -64,12 +71,11 @@ export function CoherenceWarpCore({
     const chamberY = 54;
     const chamberWidth = 78;
     const chamberHeight = 128;
-    const tunnelPulse = Math.sin(t * 4) * 6;
+    const tunnelPulse = Math.sin(motionT * 4) * 6;
     const sequenceProgress = loopProgress;
-    const clearScreenWhiteout = sequence.clearScreenWhiteout;
-    const coherentGlow = sequence.coherentGlow;
-    const whiteoutStage =
-      sequence.stage === "CLEAR" || sequence.stage === "COHERENT";
+    const clearScreenWhiteout = sequence.clearScreenWhiteout * effectScale;
+    const coherentGlow = sequence.coherentGlow * effectScale;
+    const whiteoutStage = sequence.stage === "CLEAR" || sequence.stage === "COHERENT";
     const warpDrift = 0.55 + state.lockStrength * 0.85;
     const baseColor =
       state.phase === "LOCKED"
@@ -126,7 +132,7 @@ export function CoherenceWarpCore({
     }
 
     for (let ring = 0; ring < 8; ring += 1) {
-      const progress = ((ring / 8) + (t * 0.12 * warpDrift)) % 1;
+      const progress = ((ring / 8) + (motionT * 0.12 * warpDrift)) % 1;
       const radiusX = 34 + progress * 180 + tunnelPulse;
       const radiusY = 14 + progress * 72 + tunnelPulse * 0.35;
       const alpha = 0.08 + (1 - progress) * 0.2;
@@ -140,14 +146,16 @@ export function CoherenceWarpCore({
     for (let streak = 0; streak < 28; streak += 1) {
       const seed = streak * 17.173;
       const lane = (Math.sin(seed) * 0.5 + 0.5) * 1.4 - 0.7;
-      const progress = (t * (0.22 + state.lockStrength * 0.4 + clearScreenWhiteout * 0.35 + coherentGlow * 0.45) + streak * 0.113) % 1;
+      const progress =
+        (motionT * (0.22 + state.lockStrength * 0.4 + clearScreenWhiteout * 0.35 + coherentGlow * 0.45) + streak * 0.113) % 1;
       const startX = focusX - progress * 300;
       const startY = focusY + lane * (22 + progress * 110);
       const length = 14 + progress * 60 * (0.6 + state.lockStrength);
       ctx.beginPath();
       ctx.moveTo(startX, startY);
       ctx.lineTo(startX - length, startY + lane * 6);
-      ctx.strokeStyle = streak % 3 === 0 ? "rgba(255,255,255,0.55)" : streak % 2 === 0 ? "rgba(0,240,255,0.42)" : "rgba(179,116,255,0.28)";
+      ctx.strokeStyle =
+        streak % 3 === 0 ? "rgba(255,255,255,0.55)" : streak % 2 === 0 ? "rgba(0,240,255,0.42)" : "rgba(179,116,255,0.28)";
       ctx.lineWidth = 1.2;
       ctx.stroke();
     }
@@ -220,10 +228,7 @@ export function CoherenceWarpCore({
     ctx.textBaseline = "middle";
     ctx.fillStyle = sequenceProgress < 0.24 ? "rgba(255,255,255,0.96)" : "rgba(212,216,232,0.62)";
     ctx.fillText("ENGAGE (INTENTION)", chamberX - 4, chamberY - 18);
-    ctx.fillStyle =
-      sequenceProgress >= 0.24 && sequenceProgress < 0.74
-        ? "rgba(255,255,255,0.96)"
-        : "rgba(212,216,232,0.62)";
+    ctx.fillStyle = sequenceProgress >= 0.24 && sequenceProgress < 0.74 ? "rgba(255,255,255,0.96)" : "rgba(212,216,232,0.62)";
     ctx.fillText("WARP", focusX - 20, focusY - 50);
     ctx.fillStyle =
       sequenceProgress >= 0.74 && sequenceProgress < 0.9
@@ -276,31 +281,69 @@ export function CoherenceWarpCore({
     steps.forEach((step, index) => {
       ctx.beginPath();
       ctx.arc(step.x, sequenceY, 5.5, 0, Math.PI * 2);
-      ctx.fillStyle = step.active ? (index >= 2 ? `rgba(255,255,255,${0.72 + clearScreenWhiteout * 0.16 + coherentGlow * 0.12})` : baseColor) : "rgba(255,255,255,0.14)";
+      ctx.fillStyle =
+        step.active
+          ? index >= 2
+            ? `rgba(255,255,255,${0.72 + clearScreenWhiteout * 0.16 + coherentGlow * 0.12})`
+            : baseColor
+          : "rgba(255,255,255,0.14)";
       ctx.fill();
       ctx.fillStyle = step.active ? "rgba(255,255,255,0.9)" : "rgba(212,216,232,0.55)";
       ctx.font = "10px 'Courier New', 'Lucida Console', monospace";
       ctx.fillText(step.label, step.x + 10, sequenceY);
     });
-  }, [coherence, foldScore, holdMode, loopProgress, riskScore, sequence.clearScreenWhiteout, sequence.coherentGlow, stability, state.holdBand, state.lockStrength, state.phase, state.projectedCurve, state.targetCoherence, t]);
+  }, [
+    coherence,
+    effectScale,
+    foldScore,
+    holdMode,
+    loopProgress,
+    reducedMotion,
+    riskScore,
+    sequence.clearScreenWhiteout,
+    sequence.coherentGlow,
+    stability,
+    state.holdBand,
+    state.lockStrength,
+    state.phase,
+    state.projectedCurve,
+    state.targetCoherence,
+    t,
+  ]);
 
   return (
     <div style={{ border: `1px solid ${P.border}`, borderRadius: 12, padding: 14, background: P.panel }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <div style={{ color: P.text, fontWeight: 700, fontSize: 15 }}>Coherence Engine Warp Core</div>
-        <div style={{ color: sequenceLabel === "ARRIVAL / CLEAR SCREEN" || sequenceLabel === "COHERENT" ? "#ffffff" : state.phase === "LOCKED" ? P.green : state.phase === "RAMP" ? P.gold : P.glow, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+        <div
+          style={{
+            color:
+              sequenceLabel === "ARRIVAL / CLEAR SCREEN" || sequenceLabel === "COHERENT"
+                ? "#ffffff"
+                : state.phase === "LOCKED"
+                  ? P.green
+                  : state.phase === "RAMP"
+                    ? P.gold
+                    : P.glow,
+            fontSize: 11,
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+          }}
+        >
           {sequenceLabel}
         </div>
       </div>
 
-      <canvas
-        ref={ref}
-        width={440}
-        height={320}
-        style={{ width: "100%", maxWidth: 440, borderRadius: 10, border: `1px solid ${P.border}`, background: "#05060a", display: "block" }}
-      />
+      <div ref={containerRef} style={{ width: "100%", maxWidth: 440 }}>
+        <canvas
+          ref={ref}
+          width={canvasWidth}
+          height={canvasHeight}
+          style={{ width: "100%", display: "block", borderRadius: 10, border: `1px solid ${P.border}`, background: "#05060a" }}
+        />
+      </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 12, color: P.text, fontFamily: FONT, fontSize: 11, lineHeight: 1.6 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginTop: 12, color: P.text, fontFamily: FONT, fontSize: 11, lineHeight: 1.6 }}>
         <div><strong>Current Coherence:</strong> {coherence.toFixed(3)}</div>
         <div><strong>Target Lock:</strong> {state.targetCoherence.toFixed(3)}</div>
         <div><strong>Lock Strength:</strong> {(state.lockStrength * 100).toFixed(1)}%</div>
@@ -309,10 +352,7 @@ export function CoherenceWarpCore({
         <div><strong>Lock Band:</strong> ±{state.holdBand.toFixed(3)}</div>
       </div>
 
-      <div style={{ marginTop: 12, color: P.dim, fontFamily: FONT, fontSize: 12, lineHeight: 1.7 }}>
-        {state.guidance}
-      </div>
-
+      <div style={{ marginTop: 12, color: P.dim, fontFamily: FONT, fontSize: 12, lineHeight: 1.7 }}>{state.guidance}</div>
       <div style={{ marginTop: 8, color: P.text, fontFamily: FONT, fontSize: 11, lineHeight: 1.6 }}>
         Loop: Engage (Intention) - Warp - Arrival / Clear Screen - Coherent - Re-engage
       </div>

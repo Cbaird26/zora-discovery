@@ -1,4 +1,5 @@
 import type { PersistedProductState } from "./types";
+import { loadStoredString, saveStoredString } from "../../platform/storage";
 
 export const PRODUCT_STATE_STORAGE_KEY = "zora-discovery-product-state";
 const VALID_MODES = new Set(["DECISION", "INTENT", "NAVIGATION", "RESEARCH"]);
@@ -38,17 +39,9 @@ export function deserializePersistedProductState(raw: string | null) {
 }
 
 export function loadPersistedProductState() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return deserializePersistedProductState(window.localStorage.getItem(PRODUCT_STATE_STORAGE_KEY));
+  return loadStoredString(PRODUCT_STATE_STORAGE_KEY).then((raw) => deserializePersistedProductState(raw));
 }
 
 export function savePersistedProductState(state: PersistedProductState) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.localStorage.setItem(PRODUCT_STATE_STORAGE_KEY, serializePersistedProductState(state));
+  return saveStoredString(PRODUCT_STATE_STORAGE_KEY, serializePersistedProductState(state));
 }
