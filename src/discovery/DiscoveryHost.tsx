@@ -519,10 +519,10 @@ export default function DiscoveryHost({
         : engageState === "RUNNING"
           ? "Sequence in motion. Hold course until state is achieved."
           : engageState === "ACHIEVED"
-            ? "State achieved. Press Arrived to continue."
+            ? "State achieved. Press ESC to continue."
             : engageState === "LANDED"
               ? "White hold active. Touch screen or press Esc when ready."
-              : "Arrived.";
+              : "ARRIVED.";
 
   const updateManualControl = <K extends keyof EngineControls>(key: K, value: EngineControls[K]) => {
     setSelectedPresetIndex(null);
@@ -1011,7 +1011,7 @@ export default function DiscoveryHost({
             textAlign: "center",
           }}
         >
-          Arrived
+          ARRIVED
         </div>
       )}
       <div
