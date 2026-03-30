@@ -57,7 +57,7 @@ const SEQUENCE_READY_PROGRESS = 0.04;
 const SEQUENCE_ACHIEVED_PROGRESS = 0.95;
 const SEQUENCE_DURATION_SECONDS = 5.6;
 const ARRIVAL_MESSAGE_DURATION_MS = 1100;
-const ARRIVAL_TOUCH_GUARD_MS = 240;
+const ARRIVAL_TOUCH_GUARD_MS = 0;
 const MODE_LABELS: Record<EngineMode, string> = {
   DECISION: "Decision",
   INTENT: "Intent",
@@ -1000,8 +1000,9 @@ export default function DiscoveryHost({
             justifyContent: "center",
             pointerEvents: "none",
             zIndex: 1000,
-            color: "#f7fbff",
-            textShadow: "0 0 32px rgba(255,255,255,0.42), 0 0 70px rgba(108,180,255,0.2)",
+            background: "#ffffff",
+            color: "#08111a",
+            textShadow: "none",
             fontFamily: FONT,
             fontSize: isMobile ? 20 : 26,
             fontWeight: 700,
