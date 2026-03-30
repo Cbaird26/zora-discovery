@@ -56,7 +56,7 @@ const FONT = "'Courier New', 'Lucida Console', monospace";
 const SEQUENCE_READY_PROGRESS = 0.04;
 const SEQUENCE_ACHIEVED_PROGRESS = 0.95;
 const SEQUENCE_DURATION_SECONDS = 5.6;
-const ARRIVAL_HOLD_DURATION_MS = 1600;
+const ARRIVAL_MESSAGE_DURATION_MS = 1100;
 const MODE_LABELS: Record<EngineMode, string> = {
   DECISION: "Decision",
   INTENT: "Intent",
@@ -172,10 +172,19 @@ export default function DiscoveryHost({
   const [t, setT] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [enginePaused, setEnginePaused] = useState(false);
-  const [engageState, setEngageState] = useState<"READY" | "RUNNING" | "ACHIEVED" | "LANDED">("READY");
+  const [engageState, setEngageState] = useState<"READY" | "RUNNING" | "ACHIEVED" | "LANDED" | "ARRIVED">("READY");
   const [engageStartT, setEngageStartT] = useState<number | null>(null);
   const dismissArrivalHold = useCallback(() => {
     if (engageState !== "LANDED") {
+      return;
+    }
+
+    setEngageState("ARRIVED");
+    setEngageStartT(null);
+  }, [engageState]);
+
+  const dismissArrivalMessage = useCallback(() => {
+    if (engageState !== "ARRIVED") {
       return;
     }
 
@@ -248,10 +257,6 @@ export default function DiscoveryHost({
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      dismissArrivalHold();
-    }, ARRIVAL_HOLD_DURATION_MS);
-
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         dismissArrivalHold();
@@ -260,10 +265,31 @@ export default function DiscoveryHost({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => {
-      window.clearTimeout(timeoutId);
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [dismissArrivalHold, engageState]);
+
+  useEffect(() => {
+    if (engageState !== "ARRIVED") {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      dismissArrivalMessage();
+    }, ARRIVAL_MESSAGE_DURATION_MS);
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        dismissArrivalMessage();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [dismissArrivalMessage, engageState]);
 
   useEffect(() => {
     if (!onBackActionChange) {
@@ -280,8 +306,15 @@ export default function DiscoveryHost({
 
     if (engageState === "LANDED") {
       onBackActionChange(() => {
-        setEngageState("READY");
-        setEngageStartT(null);
+        dismissArrivalHold();
+        return true;
+      });
+      return () => onBackActionChange(null);
+    }
+
+    if (engageState === "ARRIVED") {
+      onBackActionChange(() => {
+        dismissArrivalMessage();
         return true;
       });
       return () => onBackActionChange(null);
@@ -289,7 +322,7 @@ export default function DiscoveryHost({
 
     onBackActionChange(null);
     return () => onBackActionChange(null);
-  }, [engageState, onBackActionChange]);
+  }, [dismissArrivalHold, dismissArrivalMessage, engageState, onBackActionChange]);
 
   const selectedDecisionOption = useMemo(
     () => decisionOptions.find((option) => option.id === selectedDecisionId) ?? decisionOptions[0],
@@ -345,7 +378,7 @@ export default function DiscoveryHost({
       );
     }
 
-    if (engageState === "ACHIEVED" || engageState === "LANDED") {
+    if (engageState === "ACHIEVED" || engageState === "LANDED" || engageState === "ARRIVED") {
       return SEQUENCE_ACHIEVED_PROGRESS;
     }
 
@@ -448,15 +481,18 @@ export default function DiscoveryHost({
     : mobileSettings.brightnessEffectsEnabled
       ? 1
       : 0.88;
-  const clearScreenOverlayOpacity = whiteoutActive
-    ? overlayMaxOpacity
-    : Math.min(
-        overlayMaxOpacity,
-        Math.max(
-          coherenceSequence.clearScreenWhiteout * 2.8 * effectScale,
-          coherenceSequence.coherentGlow * 4.2 * effectScale,
-        ),
-      );
+  const clearScreenOverlayOpacity =
+    engageState === "ARRIVED"
+      ? 0
+      : whiteoutActive
+        ? overlayMaxOpacity
+        : Math.min(
+            overlayMaxOpacity,
+            Math.max(
+              coherenceSequence.clearScreenWhiteout * 2.8 * effectScale,
+              coherenceSequence.coherentGlow * 4.2 * effectScale,
+            ),
+          );
 
   const engageStatusText =
     enginePaused && engageState === "RUNNING"
@@ -469,7 +505,9 @@ export default function DiscoveryHost({
           ? "Sequence in motion. Hold course until state is achieved."
           : engageState === "ACHIEVED"
             ? "State achieved. Press Arrival to land."
-            : "Arrival.";
+            : engageState === "LANDED"
+              ? "Arrival."
+              : "Arrival.";
 
   const updateManualControl = <K extends keyof EngineControls>(key: K, value: EngineControls[K]) => {
     setSelectedPresetIndex(null);
@@ -938,6 +976,29 @@ export default function DiscoveryHost({
           fontFamily: FONT,
           fontSize: isMobile ? 22 : 28,
           fontWeight: 700,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            textAlign: "center",
+          }}
+        >
+          Arrival
+        </div>
+      )}
+      {engageState === "ARRIVED" && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+            zIndex: 1000,
+            color: "#f7fbff",
+            textShadow: "0 0 32px rgba(255,255,255,0.42), 0 0 70px rgba(108,180,255,0.2)",
+            fontFamily: FONT,
+            fontSize: isMobile ? 20 : 26,
+            fontWeight: 700,
             letterSpacing: "0.16em",
             textTransform: "uppercase",
             textAlign: "center",
