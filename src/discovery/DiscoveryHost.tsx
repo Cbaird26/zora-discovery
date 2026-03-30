@@ -480,9 +480,10 @@ export default function DiscoveryHost({
   );
 
   const whiteoutActive =
-    engageState === "LANDED" ||
-    (engageState !== "READY" &&
-      (coherenceSequence.stage === "CLEAR" || coherenceSequence.stage === "COHERENT"));
+    engageState !== "LANDED" &&
+    engageState !== "ARRIVED" &&
+    engageState !== "READY" &&
+    (coherenceSequence.stage === "CLEAR" || coherenceSequence.stage === "COHERENT");
   const effectScale = mobileSettings.safeMode
     ? mobileSettings.brightnessEffectsEnabled
       ? 0.42
@@ -496,9 +497,7 @@ export default function DiscoveryHost({
       ? 1
       : 0.88;
   const clearScreenOverlayOpacity =
-    engageState === "LANDED"
-      ? 1
-      : engageState === "ARRIVED"
+    engageState === "ARRIVED"
       ? 0
       : whiteoutActive
         ? overlayMaxOpacity
@@ -965,19 +964,32 @@ export default function DiscoveryHost({
         borderRadius: 18,
       }}
     >
-      <div
-        onPointerDown={engageState === "LANDED" ? dismissArrivalHold : undefined}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "#ffffff",
-          pointerEvents: engageState === "LANDED" ? "auto" : "none",
-          zIndex: 999,
-          opacity: clearScreenOverlayOpacity,
-          boxShadow: `0 0 ${isMobile ? 180 : 320}px rgba(255,255,255,0.98), inset 0 0 ${isMobile ? 120 : 240}px rgba(255,255,255,0.98)`,
-          touchAction: engageState === "LANDED" ? "manipulation" : "auto",
-        }}
-      />
+      {engageState === "LANDED" ? (
+        <div
+          onPointerDown={dismissArrivalHold}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "#ffffff",
+            pointerEvents: "auto",
+            zIndex: 999,
+            opacity: 1,
+            touchAction: "manipulation",
+          }}
+        />
+      ) : (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "#ffffff",
+            pointerEvents: "none",
+            zIndex: 999,
+            opacity: clearScreenOverlayOpacity,
+            boxShadow: `0 0 ${isMobile ? 180 : 320}px rgba(255,255,255,0.98), inset 0 0 ${isMobile ? 120 : 240}px rgba(255,255,255,0.98)`,
+          }}
+        />
+      )}
       {engageState === "ARRIVED" && (
         <div
           style={{
