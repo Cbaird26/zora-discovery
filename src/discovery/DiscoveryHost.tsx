@@ -56,7 +56,7 @@ const FONT = "'Courier New', 'Lucida Console', monospace";
 const SEQUENCE_READY_PROGRESS = 0.04;
 const SEQUENCE_ACHIEVED_PROGRESS = 0.95;
 const SEQUENCE_DURATION_SECONDS = 5.6;
-const ARRIVAL_MESSAGE_DURATION_MS = 1500;
+const ARRIVAL_MESSAGE_DURATION_MS = 1100;
 const ARRIVAL_TOUCH_GUARD_MS = 240;
 const MODE_LABELS: Record<EngineMode, string> = {
   DECISION: "Decision",
@@ -998,10 +998,8 @@ export default function DiscoveryHost({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            pointerEvents: "auto",
+            pointerEvents: "none",
             zIndex: 1000,
-            background:
-              "radial-gradient(circle at center, rgba(255,255,255,0.12) 0%, rgba(14,18,30,0.94) 38%, rgba(3,4,9,0.995) 100%)",
             color: "#f7fbff",
             textShadow: "0 0 32px rgba(255,255,255,0.42), 0 0 70px rgba(108,180,255,0.2)",
             fontFamily: FONT,
